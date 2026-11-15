@@ -28,7 +28,7 @@ if "usos_gratuitos" not in st.session_state:
 if "plano_atual" not in st.session_state:
     st.session_state["plano_atual"] = "Gratuito"
 
-# Inicializa variáveis de controle de estado para o processamento
+# Inicializa variáveis de estado para persistência
 if "df_limpo" not in st.session_state:
     st.session_state["df_limpo"] = None
 if "relatorio_mudancas" not in st.session_state:
@@ -92,7 +92,7 @@ if st.session_state["plano_atual"] == "Pro (Com IA)":
 # ==========================================
 arquivo = st.file_uploader("Envie sua planilha (CSV ou Excel)", type=["csv", "xlsx", "xls"])
 
-# Se o usuário trocar de arquivo, limpa o estado anterior
+# Limpa o estado se o usuário trocar de arquivo
 if "ultimo_arquivo" not in st.session_state or st.session_state["ultimo_arquivo"] != arquivo:
     st.session_state["ultimo_arquivo"] = arquivo
     st.session_state["df_limpo"] = None
@@ -145,7 +145,7 @@ if arquivo and aceitou_termos:
 
     total_linhas, total_colunas = df.shape
 
-    # Se ainda assim vier condensado em 1 coluna só, força a quebra por vírgula/ponto-e-vírgula
+    # Força a quebra de colunas caso venha condensado em uma única coluna
     if total_colunas <= 1 and len(df) > 0:
         st.warning("⚠️ Detectamos um arquivo condensado. Reorganizando colunas à força...")
         coluna_unica = df.columns[0]
@@ -186,35 +186,36 @@ if arquivo and aceitou_termos:
                 if duplicadas_removidas > 0:
                     relatorio_mudancas.append(f"🔁 Removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # 3. Limpeza de colunas, tratamento de erros e células em branco
-                colunas_formatadas = 0
+                # 3. Tratamento rigoroso de erros e células em branco
                 erros_comuns = ['ERROR', 'UNKNOWN', 'N/A', 'NULL', 'null', 'error', 'unknown', 'Nan', 'NAN', '']
+                colunas_formatadas = 0
 
                 for col in df_limpo.columns:
+                    # Limpa espaços do cabeçalho
                     novo_nome_col = str(col).strip()
                     if novo_nome_col != str(col):
                         df_limpo.rename(columns={col: novo_nome_col}, inplace=True)
                     
                     if df_limpo[col].dtype == 'object':
-                        # Limpa espaços em branco preservando os nulos reais com segurança
+                        # Substitui quebras de linha e limpa espaços
                         df_limpo[col] = df_limpo[col].apply(lambda x: str(x).replace('\r\n', ' ').replace('\n', ' ').strip() if pd.notna(x) else np.nan)
                         
-                        # Converte erros e strings vazias para NaN real
+                        # Converte textos de erro e variações vazias para NaN real
                         df_limpo[col] = df_limpo[col].replace(erros_comuns, np.nan)
-                        df_limpo[col] = df_limpo[col].replace(['nan', 'None', '', 'NAT', 'nat', 'NaN', 'None'], np.nan)
+                        df_limpo[col] = df_limpo[col].replace(['nan', 'None', '', 'NAT', 'nat', 'NaN', 'None', '<NA>'], np.nan)
                         
-                        # Preenche células vazias/nulas de texto com 'Não informado'
+                        # Preenche todas as células vazias ou com erro por 'Não informado'
                         df_limpo[col] = df_limpo[col].fillna('Não informado')
                         colunas_formatadas += 1
 
                 if colunas_formatadas > 0:
-                    relatorio_mudancas.append(f"🧹 Alinhamento de texto e padronização aplicados em **{colunas_formatadas}** colunas.")
-                    relatorio_mudancas.append("📌 Células em branco e erros foram preenchidos com 'Não informado'.")
+                    relatorio_mudancas.append(f"🧹 Alinhamento de colunas e textos aplicado em **{colunas_formatadas}** colunas.")
+                    relatorio_mudancas.append("📌 Células em branco, campos vazios e erros foram preenchidos com **'Não informado'**.")
 
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                # Salva no session_state para persistir ao mudar o formato de download
+                # Salva no session_state para manter os dados fixos
                 st.session_state["df_limpo"] = df_limpo
                 st.session_state["relatorio_mudancas"] = relatorio_mudancas
 
@@ -250,6 +251,9 @@ if arquivo and aceitou_termos:
             st.subheader("🤖 Diagnóstico Inteligente da IA (Amostra de 10 Linhas)")
             st.info(st.session_state["diagnostico_ia"])
 
+        with st.expander("🔍 Ver amostra dos dados limpos", expanded=True):
+            st.dataframe(st.session_state["df_limpo"].head(10), use_container_width=True)
+
         st.divider()
         st.subheader("📥 Exportar Planilha Organizada")
         tipo_saida = st.radio("Escolha o formato para baixar:", ["CSV", "Excel (.xlsx)"], horizontal=True)
@@ -258,7 +262,7 @@ if arquivo and aceitou_termos:
 
         if tipo_saida == "CSV":
             buffer = io.BytesIO()
-            # ALTERADO PARA sep=';' PARA O EXCEL EM PORTUGUÊS RECONHECER AS COLUNAS CORRETAMENTE
+            # Utiliza sep=';' para abrir perfeitamente no Excel em português sem misturar colunas
             df_final.to_csv(buffer, index=False, sep=';', encoding="utf-8-sig")
             buffer.seek(0)
 
