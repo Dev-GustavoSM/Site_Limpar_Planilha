@@ -100,20 +100,32 @@ if arquivo and aceitou_termos:
             conteudo_bytes = arquivo.read()
             arquivo.seek(0)
             
+            # Decodifica o arquivo com segurança
             try:
-                texto_amostra = conteudo_bytes.decode('utf-8-sig')
+                texto_linhas = conteudo_bytes.decode('utf-8-sig').splitlines()
             except:
-                texto_amostra = conteudo_bytes.decode('latin-1')
+                texto_linhas = conteudo_bytes.decode('latin-1').splitlines()
 
+            # Descobre o delimitador (vírgula ou ponto e vírgula)
+            amostra_texto = "\n".join(texto_linhas[:10])
             delimitador = ','
             try:
-                dialecto = csv.Sniffer().sniff(texto_amostra[:2048], delimiters=',;')
+                dialecto = csv.Sniffer().sniff(amostra_texto, delimiters=',;')
                 delimitador = dialecto.delimiter
             except:
-                if ';' in texto_amostra:
+                if ';' in amostra_texto:
                     delimitador = ';'
 
-            df = pd.read_csv(arquivo, sep=delimitador, engine='python')
+            # Lê linha por linha usando o leitor de CSV oficial para forçar a separação correta em colunas
+            leitor = csv.reader(texto_linhas, delimiter=delimitador)
+            linhas_dados = list(leitor)
+            
+            if len(linhas_dados) > 1:
+                cabecalho = linhas_dados[0]
+                corpo = linhas_dados[1:]
+                df = pd.DataFrame(corpo, columns=cabecalho)
+            else:
+                df = pd.read_csv(arquivo, sep=delimitador, engine='python')
         else:
             df = pd.read_excel(arquivo)
             
@@ -123,15 +135,17 @@ if arquivo and aceitou_termos:
 
     total_linhas, total_colunas = df.shape
 
-    if total_colunas == 1 and len(df) > 0:
+    # Se ainda assim vier condensado em 1 coluna só, força a quebra por vírgula
+    if total_colunas <= 1 and len(df) > 0:
+        st.warning("⚠️ Detectamos um arquivo condensado. Reorganizando colunas à força...")
         coluna_unica = df.columns[0]
-        df = df[coluna_unica].astype(str).str.split(r'[,;]', expand=True)
-        if len(df.columns) > 1:
-            df.columns = df.iloc[0]
-            df = df[1:].reset_index(drop=True)
-        total_linhas, total_colunas = df.shape
+        dados_divididos = df[coluna_unica].astype(str).str.split(r'[,;]', expand=True)
+        if len(dados_divididos.columns) > 1:
+            dados_divididos.columns = dados_divididos.iloc[0]
+            df = dados_divididos[1:].reset_index(drop=True)
+            total_linhas, total_colunas = df.shape
 
-    st.write(f"📄 **Arquivo carregado:** {total_linhas} linhas e {total_colunas} colunas separadas e estruturadas.")
+    st.write(f"📄 **Arquivo carregado:** {total_linhas} linhas e {total_colunas} colunas estruturadas.")
 
     if total_linhas > limite_linhas:
         st.error(f"🚫 **Limite Excedido:** Seu plano suporta até **{limite_linhas:,} linhas**. Este arquivo possui **{total_linhas:,} linhas**.")
@@ -146,23 +160,23 @@ if arquivo and aceitou_termos:
                 linhas_antes = len(df)
                 relatorio_mudancas = []
 
-                # Passo 0: Faxina inicial de colunas fantasma ou sem nome
+                # Faxina inicial de colunas fantasma
                 df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
-                # Passo 1: Remove linhas e colunas totalmente vazias
+                # 1. Remove linhas e colunas totalmente vazias
                 df_limpo = df.dropna(how="all").dropna(axis=1, how="all")
                 vazias_removidas = linhas_antes - len(df_limpo)
                 if vazias_removidas > 0:
-                    relatorio_mudancas.append(f"🗑️ Foram removidas **{vazias_removidas}** linhas totalmente vazias.")
+                    relatorio_mudancas.append(f"🗑️ Removidas **{vazias_removidas}** linhas totalmente vazias.")
 
-                # Passo 2: Remove duplicatas exatas
+                # 2. Remove duplicatas exatas
                 antes_dup = len(df_limpo)
                 df_limpo = df_limpo.drop_duplicates()
                 duplicadas_removidas = antes_dup - len(df_limpo)
                 if duplicadas_removidas > 0:
-                    relatorio_mudancas.append(f"🔁 Foram removidas **{duplicadas_removidas}** linhas duplicadas.")
+                    relatorio_mudancas.append(f"🔁 Removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # Passo 3: Reorganização e padronização profunda das colunas de texto
+                # 3. Limpeza e alinhamento de texto em cada célula
                 colunas_formatadas = 0
                 for col in df_limpo.columns:
                     novo_nome_col = str(col).strip()
@@ -175,15 +189,13 @@ if arquivo and aceitou_termos:
                         colunas_formatadas += 1
 
                 if colunas_formatadas > 0:
-                    relatorio_mudancas.append(f"🧹 Reestruturação e alinhamento aplicados em **{colunas_formatadas}** colunas de dados.")
-                else:
-                    relatorio_mudancas.append(f"✨ Estrutura de colunas validada e normalizada com sucesso.")
+                    relatorio_mudancas.append(f"🧹 Alinhamento e estruturação aplicados em **{colunas_formatadas}** colunas.")
 
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                st.success("✅ Limpeza e organização estrutural concluídas com sucesso!")
-                st.subheader("📋 Relatório de Organização do Python:")
+                st.success("✅ Limpeza e organização estrutural concluídas!")
+                st.subheader("📋 Relatório de Organização:")
                 for mudanca in relatorio_mudancas:
                     st.markdown(f"- {mudanca}")
 
@@ -200,9 +212,7 @@ if arquivo and aceitou_termos:
                         
                         prompt = f"""
                         Você é um analista de qualidade de dados. Analise o cabeçalho e as 10 primeiras linhas desta planilha abaixo.
-                        Identifique possíveis problemas de padronização (ex: datas em formatos diferentes, preços com texto misturado, nomes mal formatados, colunas confusas) e dê recomendações curtas e diretas do que o usuário deve revisar.
-                        Lembre-se: você está vendo apenas uma amostra de 10 linhas e o cabeçalho.
-
+                        Identifique possíveis problemas de padronização e dê recomendações curtas e diretas do que o usuário deve revisar.
                         Dados:
                         {amostra_texto}
                         """
@@ -210,7 +220,7 @@ if arquivo and aceitou_termos:
                         resposta = modelo.generate_content(prompt)
                         st.info(resposta.text)
                     except Exception as e:
-                        st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a organização avançada foi concluída normalmente.")
+                        st.warning("⚠️ Não foi possível conectar à IA, mas a organização avançada foi concluída.")
 
                 # --- GERAR ARQUIVO PARA DOWNLOAD ---
                 buffer = io.BytesIO()
@@ -220,7 +230,7 @@ if arquivo and aceitou_termos:
                 st.download_button(
                     label="📥 Baixar Planilha Organizada (CSV)",
                     data=buffer,
-                    file_name=f"organizado_{arquivo.name.split('.')[0]}.csv",
+                    file_name=f"organizado_{arquivo.name}",
                     mime="text/csv"
                 )
 
