@@ -18,9 +18,8 @@ fila_servidor = obter_trava_fila()
 # ==========================================
 # 2. GERENCIAMENTO DE TOKENS E PLANOS
 # ==========================================
-# Adicione aqui os tokens dos clientes que pagaram via Pix
-TOKENS_BASICO_10_REAIS = ["BASICO_10_001", "BASICO_10_002"]
-TOKENS_PRO_COM_IA = ["PRO_IA_001", "PRO_IA_002"]
+TOKENS_BASICO_10_REAIS = ["bonapizza", "pizzaria122"]
+TOKENS_PRO_COM_IA = ["bonapizzaPRO", "pizzaria122PRO"]
 
 if "usos_gratuitos" not in st.session_state:
     st.session_state["usos_gratuitos"] = 0
@@ -74,7 +73,6 @@ Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência 
 
 aceitou_termos = st.checkbox("Li e concordo que a ferramenta é um auxílio e revisarei os dados finais.")
 
-# Se for Pro, permite escolher se quer usar a IA ou apenas a limpeza Python nesta planilha
 modo_execucao = "Com IA"
 if st.session_state["plano_atual"] == "Pro (Com IA)":
     modo_execucao = st.radio("Escolha o modo para esta planilha:", ["Com IA (Diagnóstico Inteligente)", "Apenas Limpeza Python (Básico)"])
@@ -91,10 +89,9 @@ if arquivo and aceitou_termos:
         st.error("🔒 Você atingiu o limite de 5 planilhas gratuitas. Assine o Plano Básico ou Pro na barra lateral para continuar.")
         st.stop()
 
-    # Definição dos limites de linhas por plano
     if plano == "Gratuito":
         limite_linhas = 2000
-    else:  # Básico ou Pro
+    else:  
         limite_linhas = 10000
 
     try:
@@ -114,25 +111,51 @@ if arquivo and aceitou_termos:
         st.stop()
 
     # ==========================================
-    # 6. PROCESSAMENTO EM FILA (PYTHON + IA)
+    # 6. PROCESSAMENTO EM FILA (PYTHON + IA + RELATÓRIO)
     # ==========================================
     if st.button("🚀 Iniciar Limpeza Agora"):
         with st.spinner("Aguardando fila do servidor e processando dados..."):
             with fila_servidor:
-                # --- LIMPEZA DURA EM PYTHON ---
+                # --- LIMPEZA DURA EM PYTHON COM RELATÓRIO DETALHADO ---
                 linhas_antes = len(df)
-                df_limpo = df.dropna(how="all").drop_duplicates()
-                
-                for col in df_limpo.select_dtypes(include=["object"]).columns:
-                    df_limpo[col] = df_limpo[col].astype(str).str.strip()
-                
-                linhas_depois = len(df_limpo)
-                removidas = linhas_antes - linhas_depois
+                relatorio_mudancas = []
 
+                # 1. Remove linhas totalmente vazias
+                df_limpo = df.dropna(how="all")
+                vazias_removidas = linhas_antes - len(df_limpo)
+                if vazias_removidas > 0:
+                    relatorio_mudancas.append(f"🗑️ Foram removidas **{vazias_removidas}** linhas totalmente vazias.")
+
+                # 2. Remove duplicatas exatas
+                antes_dup = len(df_limpo)
+                df_limpo = df_limpo.drop_duplicates()
+                duplicadas_removidas = antes_dup - len(df_limpo)
+                if duplicadas_removidas > 0:
+                    relatorio_mudancas.append(f"🔁 Foram removidas **{duplicadas_removidas}** linhas duplicadas.")
+
+                # 3. Limpa espaços extras nas pontas dos textos
+                colunas_texto_modificadas = 0
+                for col in df_limpo.select_dtypes(include=["object"]).columns:
+                    tem_espacos = df_limpo[col].astype(str).str.contains(r'^\s+|\s+$', regex=True).any()
+                    if tem_espacos:
+                        df_limpo[col] = df_limpo[col].astype(str).str.strip()
+                        colunas_texto_modificadas += 1
+
+                if colunas_texto_modificadas > 0:
+                    relatorio_mudancas.append(f"🧹 Foram limpos espaços em branco desnecessários em **{colunas_texto_modificadas}** colunas de texto.")
+
+                # Atualiza contador se for gratuito
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                st.success(f"✅ Limpeza estrutural concluída! **{removidas}** linhas duplicadas ou vazias foram removidas.")
+                # Mostra o relatório na tela para o cliente
+                st.success("✅ Limpeza estrutural concluída com sucesso!")
+                st.subheader("📋 Relatório de Ações do Python:")
+                if relatorio_mudancas:
+                    for mudanca in relatorio_mudancas:
+                        st.markdown(f"- {mudanca}")
+                else:
+                    st.info("ℹ️ A planilha já estava limpa estruturalmente (nenhuma linha vazia ou duplicada encontrada).")
 
                 # --- CONSULTORIA DA IA (Apenas se for Pro e escolheu o modo com IA) ---
                 usa_ia = (plano == "Pro (Com IA)" and "Com IA" in modo_execucao)
@@ -143,13 +166,12 @@ if arquivo and aceitou_termos:
                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                         modelo = genai.GenerativeModel("gemini-1.5-flash")
 
-                        # Lê o cabeçalho e as 10 primeiras linhas
                         amostra_texto = df_limpo.head(10).to_markdown(index=False)
                         
                         prompt = f"""
                         Você é um analista de qualidade de dados. Analise o cabeçalho e as 10 primeiras linhas desta planilha abaixo.
                         Identifique possíveis problemas de padronização (ex: datas em formatos diferentes, preços com texto misturado, nomes mal formatados, colunas confusas) e dê recomendações curtas e diretas do que o usuário deve revisar.
-                        Lembre-se: você está vendo uma amostra de 10 linhas e o cabeçalho.
+                        Lembre-se: você está vendo apenas uma amostra de 10 linhas e o cabeçalho.
 
                         Dados:
                         {amostra_texto}
