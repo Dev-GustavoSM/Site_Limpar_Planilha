@@ -3,6 +3,7 @@ import pandas as pd
 import google.generativeai as genai
 import io
 import threading
+import csv
 
 # ==========================================
 # 1. CONFIGURAÇÃO E TRAVA DE FILA DO SERVIDOR
@@ -18,8 +19,8 @@ fila_servidor = obter_trava_fila()
 # ==========================================
 # 2. GERENCIAMENTO DE TOKENS E PLANOS
 # ==========================================
-TOKENS_BASICO_10_REAIS = ["001", "002"]
-TOKENS_PRO_COM_IA = ["PRO001", "PRO002"]
+TOKENS_BASICO_10_REAIS = ["BASICO_10_001", "BASICO_10_002"]
+TOKENS_PRO_COM_IA = ["PRO_IA_001", "PRO_IA_002"]
 
 if "usos_gratuitos" not in st.session_state:
     st.session_state["usos_gratuitos"] = 0
@@ -52,7 +53,7 @@ with st.sidebar:
     st.subheader("💎 Nossos Planos")
     st.markdown("""
     * **Gratuito:** Até 5 planilhas (Máx. 2.000 linhas). Limpeza estrutural padrão.
-    * **Básico (R$ 10/mês):** Uso contínuo sem IA (Máx. 10.000 linhas). Limpeza avançada e organização por colunas.
+    * **Básico (R$ 10/mês):** Uso contínuo sem IA (Máx. 10.000 linhas). Organização profissional por colunas.
     * **Pro (Mensal com IA):** Inclui TUDO do Básico + **Consultoria com Inteligência Artificial** analisando 10 linhas de amostra (Máx. 10.000 linhas).
     
     *Para assinar, faça o Pix e envie o comprovante no WhatsApp para receber o seu token.*
@@ -96,34 +97,47 @@ if arquivo and aceitou_termos:
 
     try:
         if arquivo.name.endswith(".csv"):
-            # Tenta ler o CSV separando corretamente por vírgula ou ponto-e-vírgula
-            try:
-                df = pd.read_csv(arquivo, sep=None, engine='python')
-            except:
-                df = pd.read_csv(arquivo, sep=',')
+            # Lê o conteúdo do arquivo como texto para detectar o separador exato
+            conteudo_bytes = arquivo.read()
+            arquivo.seek(0)
             
-            # Correção de segurança: se o arquivo veio todo empacotado em 1 única coluna
-            if len(df.columns) == 1:
-                arquivo.seek(0)
-                df = pd.read_csv(arquivo, sep=';')
+            # Tenta decodificar com utf-8 ou latin-1 para evitar erros de acentuação
+            try:
+                texto_amostra = conteudo_bytes.decode('utf-8-sig')
+            except:
+                texto_amostra = conteudo_bytes.decode('latin-1')
+
+            # Descobre se o delimitador é vírgula ou ponto e vírgula automaticamente
+            delimitador = ','
+            try:
+                dialecto = csv.Sniffer().sniff(texto_amostra[:2048], delimiters=',;')
+                delimitador = dialecto.delimiter
+            except:
+                if ';' in texto_amostra:
+                    delimitador = ';'
+
+            # Carrega o DataFrame separando corretamente nas colunas
+            df = pd.read_csv(arquivo, sep=delimitador, engine='python')
         else:
             df = pd.read_excel(arquivo)
+            
     except Exception as e:
         st.error(f"Erro ao ler o arquivo. Verifique se não está corrompido. Detalhe: {e}")
         st.stop()
 
     total_linhas, total_colunas = df.shape
-    
-    # Se por acaso continuou com 1 coluna só, força a separação por vírgula na marra
+
+    # Segurança extra: se ainda assim vier empacotado em 1 coluna só
     if total_colunas == 1 and len(df) > 0:
         coluna_unica = df.columns[0]
-        df = df[coluna_unica].str.split(',', expand=True)
-        # Usa a primeira linha como cabeçalho
-        df.columns = df.iloc[0]
-        df = df[1:].reset_index(drop=True)
+        # Tenta quebrar por vírgula e ponto-e-vírgula na marra
+        df = df[coluna_unica].astype(str).str.split(r'[,;]', expand=True)
+        if len(df.columns) > 1:
+            df.columns = df.iloc[0]
+            df = df[1:].reset_index(drop=True)
         total_linhas, total_colunas = df.shape
 
-    st.write(f"📄 **Arquivo carregado:** {total_linhas} linhas e {total_colunas} colunas separadas corretamente.")
+    st.write(f"📄 **Arquivo carregado:** {total_linhas} linhas e {total_colunas} colunas separadas e estruturadas.")
 
     if total_linhas > limite_linhas:
         st.error(f"🚫 **Limite Excedido:** Seu plano suporta até **{limite_linhas:,} linhas**. Este arquivo possui **{total_linhas:,} linhas**.")
@@ -144,7 +158,7 @@ if arquivo and aceitou_termos:
                 if vazias_removidas > 0:
                     relatorio_mudancas.append(f"🗑️ Foram removidas **{vazias_removidas}** linhas totalmente vazias.")
 
-                # Passo 2: Remove duplicatas exatas de registros
+                # Passo 2: Remove duplicatas exatas
                 antes_dup = len(df_limpo)
                 df_limpo = df_limpo.drop_duplicates()
                 duplicadas_removidas = antes_dup - len(df_limpo)
@@ -202,7 +216,7 @@ if arquivo and aceitou_termos:
                     except Exception as e:
                         st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a limpeza avançada em Python foi concluída normalmente.")
 
-                # --- GERAR ARQUIVO PARA DOWNLOAD (Com codificação correta para abrir dividido em colunas no Excel) ---
+                # --- GERAR ARQUIVO PARA DOWNLOAD ---
                 buffer = io.BytesIO()
                 df_limpo.to_csv(buffer, index=False, encoding="utf-8-sig")
                 buffer.seek(0)
