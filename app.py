@@ -28,6 +28,14 @@ if "usos_gratuitos" not in st.session_state:
 if "plano_atual" not in st.session_state:
     st.session_state["plano_atual"] = "Gratuito"
 
+# Inicializa variáveis de controle de estado para o processamento
+if "df_limpo" not in st.session_state:
+    st.session_state["df_limpo"] = None
+if "relatorio_mudancas" not in st.session_state:
+    st.session_state["relatorio_mudancas"] = []
+if "diagnostico_ia" not in st.session_state:
+    st.session_state["diagnostico_ia"] = None
+
 # ==========================================
 # 3. BARRA LATERAL: LOGIN E TABELA DE PREÇOS
 # ==========================================
@@ -83,6 +91,13 @@ if st.session_state["plano_atual"] == "Pro (Com IA)":
 # 5. UPLOAD E LEITURA INTELIGENTE DE COLUNAS
 # ==========================================
 arquivo = st.file_uploader("Envie sua planilha (CSV ou Excel)", type=["csv", "xlsx", "xls"])
+
+# Se o usuário trocar de arquivo, limpa o estado anterior
+if "ultimo_arquivo" not in st.session_state or st.session_state["ultimo_arquivo"] != arquivo:
+    st.session_state["ultimo_arquivo"] = arquivo
+    st.session_state["df_limpo"] = None
+    st.session_state["relatorio_mudancas"] = []
+    st.session_state["diagnostico_ia"] = None
 
 if arquivo and aceitou_termos:
     plano = st.session_state["plano_atual"]
@@ -147,19 +162,19 @@ if arquivo and aceitou_termos:
         st.stop()
 
     # ==========================================
-    # 6. PROCESSAMENTO E LIMPEZA ESTRUTURAL AVANÇADA
+    # 6. PROCESSAMENTO E LIMPEZA ESTRUTURAL
     # ==========================================
-    if st.button("🚀 Iniciar Limpeza e Organização"):
+    if st.button("🚀 Iniciar Limpeza e Organização") and st.session_state["df_limpo"] is None:
         with st.spinner("Aguardando fila do servidor e organizando dados..."):
             with fila_servidor:
                 linhas_antes = len(df)
                 relatorio_mudancas = []
 
                 # Faxina inicial de colunas fantasma
-                df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+                df_proc = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
                 # 1. Remove linhas e colunas totalmente vazias
-                df_limpo = df.dropna(how="all").dropna(axis=1, how="all")
+                df_limpo = df_proc.dropna(how="all").dropna(axis=1, how="all")
                 vazias_removidas = linhas_antes - len(df_limpo)
                 if vazias_removidas > 0:
                     relatorio_mudancas.append(f"🗑️ Removidas **{vazias_removidas}** linhas totalmente vazias.")
@@ -189,20 +204,16 @@ if arquivo and aceitou_termos:
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                st.success("✅ Limpeza e organização estrutural concluídas!")
-                st.subheader("📋 Relatório de Organização:")
-                for mudanca in relatorio_mudancas:
-                    st.markdown(f"- {mudanca}")
+                # Salva no session_state para não perder ao mudar botões
+                st.session_state["df_limpo"] = df_limpo
+                st.session_state["relatorio_mudancas"] = relatorio_mudancas
 
-                # --- CONSULTORIA DA IA (Apenas se for Pro e escolheu o modo com IA) ---
+                # --- CONSULTORIA DA IA ---
                 usa_ia = (plano == "Pro (Com IA)" and "Com IA" in modo_execucao)
-                
                 if usa_ia:
-                    st.subheader("🤖 Diagnóstico Inteligente da IA (Amostra de 10 Linhas)")
                     try:
                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                         modelo = genai.GenerativeModel("gemini-1.5-flash")
-
                         amostra_texto_ia = df_limpo.head(10).to_markdown(index=False)
                         
                         prompt = f"""
@@ -211,40 +222,53 @@ if arquivo and aceitou_termos:
                         Dados:
                         {amostra_texto_ia}
                         """
-                        
                         resposta = modelo.generate_content(prompt)
-                        st.info(resposta.text)
+                        st.session_state["diagnostico_ia"] = resposta.text
                     except Exception as e:
-                        st.warning("⚠️ Não foi possível conectar à IA, mas a organização avançada foi concluída.")
+                        st.session_state["diagnostico_ia"] = "⚠️ Não foi possível conectar à IA, mas a organização avançada foi concluída."
 
-                # --- PREPARAÇÃO PARA DOWNLOAD (CSV ou Excel) ---
-                st.divider()
-                st.subheader("📥 Exportar Planilha Organizada")
-                tipo_saida = st.radio("Escolha o formato para baixar:", ["CSV", "Excel (.xlsx)"], horizontal=True)
+    # ==========================================
+    # 7. EXIBIÇÃO DE RESULTADOS E DOWNLOAD PERSISTENTE
+    # ==========================================
+    if st.session_state["df_limpo"] is not None:
+        st.success("✅ Limpeza e organização estrutural concluídas!")
+        st.subheader("📋 Relatório de Organização:")
+        for mudanca in st.session_state["relatorio_mudancas"]:
+            st.markdown(f"- {mudanca}")
 
-                if tipo_saida == "CSV":
-                    buffer = io.BytesIO()
-                    df_limpo.to_csv(buffer, index=False, encoding="utf-8-sig")
-                    buffer.seek(0)
+        if st.session_state["diagnostico_ia"]:
+            st.subheader("🤖 Diagnóstico Inteligente da IA (Amostra de 10 Linhas)")
+            st.info(st.session_state["diagnostico_ia"])
 
-                    st.download_button(
-                        label="📥 Baixar Planilha Organizada (CSV)",
-                        data=buffer,
-                        file_name=f"organizado_{arquivo.name.rsplit('.', 1)[0]}.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        df_limpo.to_excel(writer, index=False)
-                    excel_data = output.getvalue()
+        st.divider()
+        st.subheader("📥 Exportar Planilha Organizada")
+        tipo_saida = st.radio("Escolha o formato para baixar:", ["CSV", "Excel (.xlsx)"], horizontal=True)
 
-                    st.download_button(
-                        label="📥 Baixar Planilha Organizada (Excel)",
-                        data=excel_data,
-                        file_name=f"organizado_{arquivo.name.rsplit('.', 1)[0]}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+        df_final = st.session_state["df_limpo"]
+
+        if tipo_saida == "CSV":
+            buffer = io.BytesIO()
+            df_final.to_csv(buffer, index=False, encoding="utf-8-sig")
+            buffer.seek(0)
+
+            st.download_button(
+                label="📥 Baixar Planilha Organizada (CSV)",
+                data=buffer,
+                file_name=f"organizado_{arquivo.name.rsplit('.', 1)[0]}.csv",
+                mime="text/csv"
+            )
+        else:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_final.to_excel(writer, index=False)
+            excel_data = output.getvalue()
+
+            st.download_button(
+                label="📥 Baixar Planilha Organizada (Excel)",
+                data=excel_data,
+                file_name=f"organizado_{arquivo.name.rsplit('.', 1)[0]}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 elif arquivo and not aceitou_termos:
     st.info("👆 Marque a caixa de seleção acima concordando com os termos de uso para liberar o processamento.")
