@@ -145,7 +145,7 @@ if arquivo and aceitou_termos:
 
     total_linhas, total_colunas = df.shape
 
-    # Se ainda assim vier condensado em 1 coluna só, força a quebra por vírgula
+    # Se ainda assim vier condensado em 1 coluna só, força a quebra por vírgula/ponto-e-vírgula
     if total_colunas <= 1 and len(df) > 0:
         st.warning("⚠️ Detectamos um arquivo condensado. Reorganizando colunas à força...")
         coluna_unica = df.columns[0]
@@ -186,30 +186,30 @@ if arquivo and aceitou_termos:
                 if duplicadas_removidas > 0:
                     relatorio_mudancas.append(f"🔁 Removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # 3. Substitui textos de erro comuns por valores vazios (NaN) reais
-                erros_comuns = ['ERROR', 'UNKNOWN', 'N/A', 'NULL', 'null', 'error', 'unknown', 'Nan', 'NAN']
-                df_limpo.replace(erros_comuns, np.nan, inplace=True)
-
-                # 4. Limpeza e alinhamento de texto em cada célula
+                # 3. Limpeza de colunas, tratamento de erros e células em branco
                 colunas_formatadas = 0
+                erros_comuns = ['ERROR', 'UNKNOWN', 'N/A', 'NULL', 'null', 'error', 'unknown', 'Nan', 'NAN', '']
+
                 for col in df_limpo.columns:
                     novo_nome_col = str(col).strip()
                     if novo_nome_col != str(col):
                         df_limpo.rename(columns={col: novo_nome_col}, inplace=True)
                     
                     if df_limpo[col].dtype == 'object':
-                        df_limpo[col] = df_limpo[col].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-                        # Converte strings vazias ou nulas textuais para NaN real
-                        df_limpo[col] = df_limpo[col].replace({'nan': np.nan, 'None': np.nan, '': np.nan, 'nat': np.nan})
+                        # Limpa espaços em branco preservando os nulos reais com segurança
+                        df_limpo[col] = df_limpo[col].apply(lambda x: str(x).replace('\r\n', ' ').replace('\n', ' ').strip() if pd.notna(x) else np.nan)
+                        
+                        # Converte erros e strings vazias para NaN real
+                        df_limpo[col] = df_limpo[col].replace(erros_comuns, np.nan)
+                        df_limpo[col] = df_limpo[col].replace(['nan', 'None', '', 'NAT', 'nat', 'NaN', 'None'], np.nan)
+                        
+                        # Preenche células vazias/nulas de texto com 'Não informado'
+                        df_limpo[col] = df_limpo[col].fillna('Não informado')
                         colunas_formatadas += 1
 
                 if colunas_formatadas > 0:
-                    relatorio_mudancas.append(f"🧹 Alinhamento e estruturação aplicados em **{colunas_formatadas}** colunas.")
-
-                # 5. Preenche valores vazios de texto com 'Não informado' (sem afetar colunas numéricas)
-                colunas_texto = df_limpo.select_dtypes(include=['object']).columns
-                df_limpo[colunas_texto] = df_limpo[colunas_texto].fillna('Não informado')
-                relatorio_mudancas.append("📌 Células de texto vazias ou com erros padronizadas como 'Não informado'.")
+                    relatorio_mudancas.append(f"🧹 Alinhamento de texto e padronização aplicados em **{colunas_formatadas}** colunas.")
+                    relatorio_mudancas.append("📌 Células em branco e erros foram preenchidos com 'Não informado'.")
 
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
@@ -258,7 +258,8 @@ if arquivo and aceitou_termos:
 
         if tipo_saida == "CSV":
             buffer = io.BytesIO()
-            df_final.to_csv(buffer, index=False, encoding="utf-8-sig")
+            # ALTERADO PARA sep=';' PARA O EXCEL EM PORTUGUÊS RECONHECER AS COLUNAS CORRETAMENTE
+            df_final.to_csv(buffer, index=False, sep=';', encoding="utf-8-sig")
             buffer.seek(0)
 
             st.download_button(
