@@ -18,8 +18,8 @@ fila_servidor = obter_trava_fila()
 # ==========================================
 # 2. GERENCIAMENTO DE TOKENS E PLANOS
 # ==========================================
-TOKENS_BASICO_10_REAIS = ["bonapizza", "pizza122"]
-TOKENS_PRO_COM_IA = ["bonapizzaPRO", "pizza122PRO"]
+TOKENS_BASICO_10_REAIS = ["001", "002"]
+TOKENS_PRO_COM_IA = ["PRO001", "PRO002"]
 
 if "usos_gratuitos" not in st.session_state:
     st.session_state["usos_gratuitos"] = 0
@@ -36,10 +36,10 @@ with st.sidebar:
     if st.button("Validar Token"):
         if token_input in TOKENS_PRO_COM_IA:
             st.session_state["plano_atual"] = "Pro (Com IA)"
-            st.success("Plano Pro ativado! (Limpeza + IA liberados)")
+            st.success("Plano Pro ativado! (Limpeza Avançada + IA liberados)")
         elif token_input in TOKENS_BASICO_10_REAIS:
             st.session_state["plano_atual"] = "Básico (R$ 10/mês)"
-            st.success("Plano Básico ativado! (Apenas limpeza Python)")
+            st.success("Plano Básico ativado! (Limpeza Avançada Python)")
         else:
             st.error("Token inválido ou expirado.")
 
@@ -51,8 +51,8 @@ with st.sidebar:
     st.divider()
     st.subheader("💎 Nossos Planos")
     st.markdown("""
-    * **Gratuito:** Até 5 planilhas (Máx. 2.000 linhas). Apenas limpeza básica.
-    * **Básico (R$ 10/mês):** Uso contínuo sem IA (Máx. 10.000 linhas). Limpeza rápida estrutural.
+    * **Gratuito:** Até 5 planilhas (Máx. 2.000 linhas). Limpeza estrutural padrão.
+    * **Básico (R$ 10/mês):** Uso contínuo sem IA (Máx. 10.000 linhas). Limpeza avançada e organização por colunas.
     * **Pro (Mensal com IA):** Inclui TUDO do Básico + **Consultoria com Inteligência Artificial** analisando 10 linhas de amostra (Máx. 10.000 linhas).
     
     *Para assinar, faça o Pix e envie o comprovante no WhatsApp para receber o seu token.*
@@ -62,11 +62,11 @@ with st.sidebar:
 # 4. INTERFACE PRINCIPAL E AVISO JURÍDICO
 # ==========================================
 st.title("📊 DataCleaner Universal")
-st.write("Automatize a limpeza de planilhas corporativas com segurança e velocidade.")
+st.write("Automatize a limpeza e organização de planilhas corporativas com segurança e velocidade.")
 
 st.warning("""
 ⚠️ **Aviso Importante & Termos de Uso:** 
-Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência Artificial analisa padrões para sugerir melhorias, mas **pode cometer erros ou interpretações imprecisas**. 
+Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência Artificial e os algoritmos analisam padrões para sugerir melhorias, mas **podem ocorrer imprecisas**. 
 * Sempre mantenha uma cópia de segurança do seu arquivo original.
 * A revisão e conferência final dos dados tratados são de inteira responsabilidade do usuário.
 """)
@@ -75,7 +75,7 @@ aceitou_termos = st.checkbox("Li e concordo que a ferramenta é um auxílio e re
 
 modo_execucao = "Com IA"
 if st.session_state["plano_atual"] == "Pro (Com IA)":
-    modo_execucao = st.radio("Escolha o modo para esta planilha:", ["Com IA (Diagnóstico Inteligente)", "Apenas Limpeza Python (Básico)"])
+    modo_execucao = st.radio("Escolha o modo para esta planilha:", ["Com IA (Diagnóstico Inteligente)", "Apenas Limpeza Avançada Python"])
 
 # ==========================================
 # 5. UPLOAD E VERIFICAÇÃO DE LIMITES
@@ -111,51 +111,57 @@ if arquivo and aceitou_termos:
         st.stop()
 
     # ==========================================
-    # 6. PROCESSAMENTO EM FILA (PYTHON + IA + RELATÓRIO)
+    # 6. PROCESSAMENTO E LIMPEZA ESTRUTURAL AVANÇADA
     # ==========================================
-    if st.button("🚀 Iniciar Limpeza Agora"):
-        with st.spinner("Aguardando fila do servidor e processando dados..."):
+    if st.button("🚀 Iniciar Limpeza e Organização"):
+        with st.spinner("Aguardando fila do servidor e organizando dados..."):
             with fila_servidor:
-                # --- LIMPEZA DURA EM PYTHON COM RELATÓRIO DETALHADO ---
                 linhas_antes = len(df)
                 relatorio_mudancas = []
 
-                # 1. Remove linhas totalmente vazias
-                df_limpo = df.dropna(how="all")
+                # Passo 1: Remove linhas e colunas totalmente vazias
+                df_limpo = df.dropna(how="all").dropna(axis=1, how="all")
                 vazias_removidas = linhas_antes - len(df_limpo)
                 if vazias_removidas > 0:
                     relatorio_mudancas.append(f"🗑️ Foram removidas **{vazias_removidas}** linhas totalmente vazias.")
 
-                # 2. Remove duplicatas exatas
+                # Passo 2: Remove duplicatas exatas de registros
                 antes_dup = len(df_limpo)
                 df_limpo = df_limpo.drop_duplicates()
                 duplicadas_removidas = antes_dup - len(df_limpo)
                 if duplicadas_removidas > 0:
                     relatorio_mudancas.append(f"🔁 Foram removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # 3. Limpa espaços extras nas pontas dos textos
-                colunas_texto_modificadas = 0
-                for col in df_limpo.select_dtypes(include=["object"]).columns:
-                    tem_espacos = df_limpo[col].astype(str).str.contains(r'^\s+|\s+$', regex=True).any()
-                    if tem_espacos:
-                        df_limpo[col] = df_limpo[col].astype(str).str.strip()
-                        colunas_texto_modificadas += 1
+                # Passo 3: Limpeza profunda e padronização por coluna (Texto, Espaços, Caracteres corrompidos)
+                colunas_formatadas = 0
+                for col in df_limpo.columns:
+                    # Padroniza o nome da coluna tirando espaços extras nas pontas
+                    novo_nome_col = str(col).strip()
+                    if novo_nome_col != str(col):
+                        df_limpo.rename(columns={col: novo_nome_col}, inplace=True)
+                    
+                    # Se a coluna for de texto, limpa espaços duplicados internos e nas pontas
+                    if df_limpo[col].dtype == 'object':
+                        # Remove quebras de linha indesejadas e espaços duplos que quebram formatações e CSVs
+                        df_limpo[col] = df_limpo[col].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
+                        # Substitui strings "nan" ou "None" vazias por nulos reais para padronizar
+                        df_limpo[col] = df_limpo[col].replace({'nan': None, 'None': None, '': None})
+                        colunas_formatadas += 1
 
-                if colunas_texto_modificadas > 0:
-                    relatorio_mudancas.append(f"🧹 Foram limpos espaços em branco desnecessários em **{colunas_texto_modificadas}** colunas de texto.")
+                if colunas_formatadas > 0:
+                    relatorio_mudancas.append(f"🧹 Padronização e estruturação aplicadas em **{colunas_formatadas}** colunas de dados.")
 
-                # Atualiza contador se for gratuito
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                # Mostra o relatório na tela para o cliente
-                st.success("✅ Limpeza estrutural concluída com sucesso!")
-                st.subheader("📋 Relatório de Ações do Python:")
+                # Exibe o relatório detalhado das ações do Python
+                st.success("✅ Limpeza e organização estrutural concluídas com sucesso!")
+                st.subheader("📋 Relatório de Organização do Python:")
                 if relatorio_mudancas:
                     for mudanca in relatorio_mudancas:
                         st.markdown(f"- {mudanca}")
                 else:
-                    st.info("ℹ️ A planilha já estava limpa estruturalmente (nenhuma linha vazia ou duplicada encontrada).")
+                    st.info("ℹ️ A planilha já estava estruturada e limpa.")
 
                 # --- CONSULTORIA DA IA (Apenas se for Pro e escolheu o modo com IA) ---
                 usa_ia = (plano == "Pro (Com IA)" and "Com IA" in modo_execucao)
@@ -180,17 +186,17 @@ if arquivo and aceitou_termos:
                         resposta = modelo.generate_content(prompt)
                         st.info(resposta.text)
                     except Exception as e:
-                        st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a limpeza em Python foi concluída normalmente.")
+                        st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a limpeza avançada em Python foi concluída normalmente.")
 
-                # --- GERAR ARQUIVO PARA DOWNLOAD ---
+                # --- GERAR ARQUIVO PARA DOWNLOAD (Com codificação UTF-8 para evitar problemas de acentos e vírgulas) ---
                 buffer = io.BytesIO()
                 df_limpo.to_csv(buffer, index=False, encoding="utf-8-sig")
                 buffer.seek(0)
 
                 st.download_button(
-                    label="📥 Baixar Planilha Limpa (CSV)",
+                    label="📥 Baixar Planilha Organizada (CSV)",
                     data=buffer,
-                    file_name=f"limpo_{arquivo.name.split('.')[0]}.csv",
+                    file_name=f"organizado_{arquivo.name.split('.')[0]}.csv",
                     mime="text/csv"
                 )
 
