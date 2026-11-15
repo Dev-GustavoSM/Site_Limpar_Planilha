@@ -186,7 +186,11 @@ if arquivo and aceitou_termos:
                 if duplicadas_removidas > 0:
                     relatorio_mudancas.append(f"🔁 Removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # 3. Limpeza e alinhamento de texto em cada célula
+                # 3. Substitui textos de erro comuns por valores vazios (NaN) reais
+                erros_comuns = ['ERROR', 'UNKNOWN', 'N/A', 'NULL', 'null', 'error', 'unknown', 'Nan', 'NAN']
+                df_limpo.replace(erros_comuns, np.nan, inplace=True)
+
+                # 4. Limpeza e alinhamento de texto em cada célula
                 colunas_formatadas = 0
                 for col in df_limpo.columns:
                     novo_nome_col = str(col).strip()
@@ -195,16 +199,22 @@ if arquivo and aceitou_termos:
                     
                     if df_limpo[col].dtype == 'object':
                         df_limpo[col] = df_limpo[col].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-                        df_limpo[col] = df_limpo[col].replace({'nan': None, 'None': None, '': None})
+                        # Converte strings vazias ou nulas textuais para NaN real
+                        df_limpo[col] = df_limpo[col].replace({'nan': np.nan, 'None': np.nan, '': np.nan, 'nat': np.nan})
                         colunas_formatadas += 1
 
                 if colunas_formatadas > 0:
                     relatorio_mudancas.append(f"🧹 Alinhamento e estruturação aplicados em **{colunas_formatadas}** colunas.")
 
+                # 5. Preenche valores vazios de texto com 'Não informado' (sem afetar colunas numéricas)
+                colunas_texto = df_limpo.select_dtypes(include=['object']).columns
+                df_limpo[colunas_texto] = df_limpo[colunas_texto].fillna('Não informado')
+                relatorio_mudancas.append("📌 Células de texto vazias ou com erros padronizadas como 'Não informado'.")
+
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                # Salva no session_state para não perder ao mudar botões
+                # Salva no session_state para persistir ao mudar o formato de download
                 st.session_state["df_limpo"] = df_limpo
                 st.session_state["relatorio_mudancas"] = relatorio_mudancas
 
