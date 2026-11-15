@@ -18,8 +18,8 @@ fila_servidor = obter_trava_fila()
 # ==========================================
 # 2. GERENCIAMENTO DE TOKENS E PLANOS
 # ==========================================
-TOKENS_BASICO_10_REAIS = ["bonapizza", "pizzaria122"]
-TOKENS_PRO_COM_IA = ["bonapizzaPRO", "pizzaria122PRO"]
+TOKENS_BASICO_10_REAIS = ["BASICO_10_001", "BASICO_10_002"]
+TOKENS_PRO_COM_IA = ["PRO_IA_001", "PRO_IA_002"]
 
 if "usos_gratuitos" not in st.session_state:
     st.session_state["usos_gratuitos"] = 0
