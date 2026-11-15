@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import google.generativeai as genai
 import io
 import threading
@@ -66,10 +67,10 @@ st.title("📊 DataCleaner Universal")
 st.write("Automatize a limpeza e organização de planilhas corporativas com segurança e velocidade.")
 
 st.warning("""
-⚠️ **Aviso Importante & Termos de Uso:** 
-Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência Artificial e os algoritmos analisam padrões para sugerir melhorias, mas **podem ocorrer imprecisões**. 
-* Sempre mantenha uma cópia de segurança do seu arquivo original.
-* A revisão e conferência final dos dados tratados são de inteira responsabilidade do usuário.
+⚠️ **Aviso Importante & Termos de Uso:**  
+Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência Artificial e os algoritmos analisam padrões para sugerir melhorias, mas **podem ocorrer imprecisões**.  
+- Sempre mantenha uma cópia de segurança do seu arquivo original.
+- A revisão e conferência final dos dados tratados são de inteira responsabilidade do usuário.
 """)
 
 aceitou_termos = st.checkbox("Li e concordo que a ferramenta é um auxílio e revisarei os dados finais.")
@@ -81,7 +82,7 @@ if st.session_state["plano_atual"] == "Pro (Com IA)":
 # ==========================================
 # 5. UPLOAD E LEITURA INTELIGENTE DE COLUNAS
 # ==========================================
-arquivo = st.file_uploader("Envie sua planilha (CSV ou Excel)", type=["csv", "xlsx"])
+arquivo = st.file_uploader("Envie sua planilha (CSV ou Excel)", type=["csv", "xlsx", "xls"])
 
 if arquivo and aceitou_termos:
     plano = st.session_state["plano_atual"]
@@ -90,23 +91,18 @@ if arquivo and aceitou_termos:
         st.error("🔒 Você atingiu o limite de 5 planilhas gratuitas. Assine o Plano Básico ou Pro na barra lateral para continuar.")
         st.stop()
 
-    if plano == "Gratuito":
-        limite_linhas = 2000
-    else:  
-        limite_linhas = 10000
+    limite_linhas = 2000 if plano == "Gratuito" else 10000
 
     try:
         if arquivo.name.endswith(".csv"):
             conteudo_bytes = arquivo.read()
             arquivo.seek(0)
             
-            # Decodifica o arquivo com segurança
             try:
                 texto_linhas = conteudo_bytes.decode('utf-8-sig').splitlines()
             except:
                 texto_linhas = conteudo_bytes.decode('latin-1').splitlines()
 
-            # Descobre o delimitador (vírgula ou ponto e vírgula)
             amostra_texto = "\n".join(texto_linhas[:10])
             delimitador = ','
             try:
@@ -116,7 +112,6 @@ if arquivo and aceitou_termos:
                 if ';' in amostra_texto:
                     delimitador = ';'
 
-            # Lê linha por linha usando o leitor de CSV oficial para forçar a separação correta em colunas
             leitor = csv.reader(texto_linhas, delimiter=delimitador)
             linhas_dados = list(leitor)
             
@@ -208,13 +203,13 @@ if arquivo and aceitou_termos:
                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                         modelo = genai.GenerativeModel("gemini-1.5-flash")
 
-                        amostra_texto = df_limpo.head(10).to_markdown(index=False)
+                        amostra_texto_ia = df_limpo.head(10).to_markdown(index=False)
                         
                         prompt = f"""
                         Você é um analista de qualidade de dados. Analise o cabeçalho e as 10 primeiras linhas desta planilha abaixo.
                         Identifique possíveis problemas de padronização e dê recomendações curtas e diretas do que o usuário deve revisar.
                         Dados:
-                        {amostra_texto}
+                        {amostra_texto_ia}
                         """
                         
                         resposta = modelo.generate_content(prompt)
@@ -222,17 +217,34 @@ if arquivo and aceitou_termos:
                     except Exception as e:
                         st.warning("⚠️ Não foi possível conectar à IA, mas a organização avançada foi concluída.")
 
-                # --- GERAR ARQUIVO PARA DOWNLOAD ---
-                buffer = io.BytesIO()
-                df_limpo.to_csv(buffer, index=False, encoding="utf-8-sig")
-                buffer.seek(0)
+                # --- PREPARAÇÃO PARA DOWNLOAD (CSV ou Excel) ---
+                st.divider()
+                st.subheader("📥 Exportar Planilha Organizada")
+                tipo_saida = st.radio("Escolha o formato para baixar:", ["CSV", "Excel (.xlsx)"], horizontal=True)
 
-                st.download_button(
-                    label="📥 Baixar Planilha Organizada (CSV)",
-                    data=buffer,
-                    file_name=f"organizado_{arquivo.name}",
-                    mime="text/csv"
-                )
+                if tipo_saida == "CSV":
+                    buffer = io.BytesIO()
+                    df_limpo.to_csv(buffer, index=False, encoding="utf-8-sig")
+                    buffer.seek(0)
+
+                    st.download_button(
+                        label="📥 Baixar Planilha Organizada (CSV)",
+                        data=buffer,
+                        file_name=f"organizado_{arquivo.name.rsplit('.', 1)[0]}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        df_limpo.to_excel(writer, index=False)
+                    excel_data = output.getvalue()
+
+                    st.download_button(
+                        label="📥 Baixar Planilha Organizada (Excel)",
+                        data=excel_data,
+                        file_name=f"organizado_{arquivo.name.rsplit('.', 1)[0]}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
 elif arquivo and not aceitou_termos:
     st.info("👆 Marque a caixa de seleção acima concordando com os termos de uso para liberar o processamento.")
