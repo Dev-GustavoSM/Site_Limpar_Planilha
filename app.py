@@ -97,17 +97,14 @@ if arquivo and aceitou_termos:
 
     try:
         if arquivo.name.endswith(".csv"):
-            # Lê o conteúdo do arquivo como texto para detectar o separador exato
             conteudo_bytes = arquivo.read()
             arquivo.seek(0)
             
-            # Tenta decodificar com utf-8 ou latin-1 para evitar erros de acentuação
             try:
                 texto_amostra = conteudo_bytes.decode('utf-8-sig')
             except:
                 texto_amostra = conteudo_bytes.decode('latin-1')
 
-            # Descobre se o delimitador é vírgula ou ponto e vírgula automaticamente
             delimitador = ','
             try:
                 dialecto = csv.Sniffer().sniff(texto_amostra[:2048], delimiters=',;')
@@ -116,7 +113,6 @@ if arquivo and aceitou_termos:
                 if ';' in texto_amostra:
                     delimitador = ';'
 
-            # Carrega o DataFrame separando corretamente nas colunas
             df = pd.read_csv(arquivo, sep=delimitador, engine='python')
         else:
             df = pd.read_excel(arquivo)
@@ -127,10 +123,8 @@ if arquivo and aceitou_termos:
 
     total_linhas, total_colunas = df.shape
 
-    # Segurança extra: se ainda assim vier empacotado em 1 coluna só
     if total_colunas == 1 and len(df) > 0:
         coluna_unica = df.columns[0]
-        # Tenta quebrar por vírgula e ponto-e-vírgula na marra
         df = df[coluna_unica].astype(str).str.split(r'[,;]', expand=True)
         if len(df.columns) > 1:
             df.columns = df.iloc[0]
@@ -152,6 +146,9 @@ if arquivo and aceitou_termos:
                 linhas_antes = len(df)
                 relatorio_mudancas = []
 
+                # Passo 0: Faxina inicial de colunas fantasma ou sem nome
+                df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+
                 # Passo 1: Remove linhas e colunas totalmente vazias
                 df_limpo = df.dropna(how="all").dropna(axis=1, how="all")
                 vazias_removidas = linhas_antes - len(df_limpo)
@@ -165,7 +162,7 @@ if arquivo and aceitou_termos:
                 if duplicadas_removidas > 0:
                     relatorio_mudancas.append(f"🔁 Foram removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # Passo 3: Limpeza profunda e padronização por coluna
+                # Passo 3: Reorganização e padronização profunda das colunas de texto
                 colunas_formatadas = 0
                 for col in df_limpo.columns:
                     novo_nome_col = str(col).strip()
@@ -178,18 +175,17 @@ if arquivo and aceitou_termos:
                         colunas_formatadas += 1
 
                 if colunas_formatadas > 0:
-                    relatorio_mudancas.append(f"🧹 Padronização e estruturação aplicadas em **{colunas_formatadas}** colunas de dados.")
+                    relatorio_mudancas.append(f"🧹 Reestruturação e alinhamento aplicados em **{colunas_formatadas}** colunas de dados.")
+                else:
+                    relatorio_mudancas.append(f"✨ Estrutura de colunas validada e normalizada com sucesso.")
 
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
                 st.success("✅ Limpeza e organização estrutural concluídas com sucesso!")
                 st.subheader("📋 Relatório de Organização do Python:")
-                if relatorio_mudancas:
-                    for mudanca in relatorio_mudancas:
-                        st.markdown(f"- {mudanca}")
-                else:
-                    st.info("ℹ️ A planilha já estava estruturada e limpa.")
+                for mudanca in relatorio_mudancas:
+                    st.markdown(f"- {mudanca}")
 
                 # --- CONSULTORIA DA IA (Apenas se for Pro e escolheu o modo com IA) ---
                 usa_ia = (plano == "Pro (Com IA)" and "Com IA" in modo_execucao)
@@ -214,7 +210,7 @@ if arquivo and aceitou_termos:
                         resposta = modelo.generate_content(prompt)
                         st.info(resposta.text)
                     except Exception as e:
-                        st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a limpeza avançada em Python foi concluída normalmente.")
+                        st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a organização avançada foi concluída normalmente.")
 
                 # --- GERAR ARQUIVO PARA DOWNLOAD ---
                 buffer = io.BytesIO()
