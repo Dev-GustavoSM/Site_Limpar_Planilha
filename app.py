@@ -66,7 +66,7 @@ st.write("Automatize a limpeza e organização de planilhas corporativas com seg
 
 st.warning("""
 ⚠️ **Aviso Importante & Termos de Uso:** 
-Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência Artificial e os algoritmos analisam padrões para sugerir melhorias, mas **podem ocorrer imprecisas**. 
+Esta plataforma é uma ferramenta de auxílio à produtividade. A Inteligência Artificial e os algoritmos analisam padrões para sugerir melhorias, mas **podem ocorrer imprecisões**. 
 * Sempre mantenha uma cópia de segurança do seu arquivo original.
 * A revisão e conferência final dos dados tratados são de inteira responsabilidade do usuário.
 """)
@@ -78,7 +78,7 @@ if st.session_state["plano_atual"] == "Pro (Com IA)":
     modo_execucao = st.radio("Escolha o modo para esta planilha:", ["Com IA (Diagnóstico Inteligente)", "Apenas Limpeza Avançada Python"])
 
 # ==========================================
-# 5. UPLOAD E VERIFICAÇÃO DE LIMITES
+# 5. UPLOAD E LEITURA INTELIGENTE DE COLUNAS
 # ==========================================
 arquivo = st.file_uploader("Envie sua planilha (CSV ou Excel)", type=["csv", "xlsx"])
 
@@ -96,7 +96,16 @@ if arquivo and aceitou_termos:
 
     try:
         if arquivo.name.endswith(".csv"):
-            df = pd.read_csv(arquivo)
+            # Tenta ler o CSV separando corretamente por vírgula ou ponto-e-vírgula
+            try:
+                df = pd.read_csv(arquivo, sep=None, engine='python')
+            except:
+                df = pd.read_csv(arquivo, sep=',')
+            
+            # Correção de segurança: se o arquivo veio todo empacotado em 1 única coluna
+            if len(df.columns) == 1:
+                arquivo.seek(0)
+                df = pd.read_csv(arquivo, sep=';')
         else:
             df = pd.read_excel(arquivo)
     except Exception as e:
@@ -104,7 +113,17 @@ if arquivo and aceitou_termos:
         st.stop()
 
     total_linhas, total_colunas = df.shape
-    st.write(f"📄 **Arquivo carregado:** {total_linhas} linhas e {total_colunas} colunas.")
+    
+    # Se por acaso continuou com 1 coluna só, força a separação por vírgula na marra
+    if total_colunas == 1 and len(df) > 0:
+        coluna_unica = df.columns[0]
+        df = df[coluna_unica].str.split(',', expand=True)
+        # Usa a primeira linha como cabeçalho
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
+        total_linhas, total_colunas = df.shape
+
+    st.write(f"📄 **Arquivo carregado:** {total_linhas} linhas e {total_colunas} colunas separadas corretamente.")
 
     if total_linhas > limite_linhas:
         st.error(f"🚫 **Limite Excedido:** Seu plano suporta até **{limite_linhas:,} linhas**. Este arquivo possui **{total_linhas:,} linhas**.")
@@ -132,19 +151,15 @@ if arquivo and aceitou_termos:
                 if duplicadas_removidas > 0:
                     relatorio_mudancas.append(f"🔁 Foram removidas **{duplicadas_removidas}** linhas duplicadas.")
 
-                # Passo 3: Limpeza profunda e padronização por coluna (Texto, Espaços, Caracteres corrompidos)
+                # Passo 3: Limpeza profunda e padronização por coluna
                 colunas_formatadas = 0
                 for col in df_limpo.columns:
-                    # Padroniza o nome da coluna tirando espaços extras nas pontas
                     novo_nome_col = str(col).strip()
                     if novo_nome_col != str(col):
                         df_limpo.rename(columns={col: novo_nome_col}, inplace=True)
                     
-                    # Se a coluna for de texto, limpa espaços duplicados internos e nas pontas
                     if df_limpo[col].dtype == 'object':
-                        # Remove quebras de linha indesejadas e espaços duplos que quebram formatações e CSVs
                         df_limpo[col] = df_limpo[col].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-                        # Substitui strings "nan" ou "None" vazias por nulos reais para padronizar
                         df_limpo[col] = df_limpo[col].replace({'nan': None, 'None': None, '': None})
                         colunas_formatadas += 1
 
@@ -154,7 +169,6 @@ if arquivo and aceitou_termos:
                 if plano == "Gratuito":
                     st.session_state["usos_gratuitos"] += 1
 
-                # Exibe o relatório detalhado das ações do Python
                 st.success("✅ Limpeza e organização estrutural concluídas com sucesso!")
                 st.subheader("📋 Relatório de Organização do Python:")
                 if relatorio_mudancas:
@@ -188,7 +202,7 @@ if arquivo and aceitou_termos:
                     except Exception as e:
                         st.warning("⚠️ Não foi possível conectar à IA neste momento, mas a limpeza avançada em Python foi concluída normalmente.")
 
-                # --- GERAR ARQUIVO PARA DOWNLOAD (Com codificação UTF-8 para evitar problemas de acentos e vírgulas) ---
+                # --- GERAR ARQUIVO PARA DOWNLOAD (Com codificação correta para abrir dividido em colunas no Excel) ---
                 buffer = io.BytesIO()
                 df_limpo.to_csv(buffer, index=False, encoding="utf-8-sig")
                 buffer.seek(0)
