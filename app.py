@@ -7,7 +7,7 @@ import threading
 # ==========================================
 # 1. CONFIGURAÇÃO E TRAVA DE FILA DO SERVIDOR
 # ==========================================
-st.set_page_config(page_title="DataCleaner Universal", page_icon="M", layout="centered")
+st.set_page_config(page_title="DataCleaner Universal", page_icon="icon", layout="centered")
 
 @st.cache_resource
 def obter_trava_fila():
